@@ -4,6 +4,30 @@ python
 #
 # https://github.com/cyrus-and/gdb-dashboard
 
+# License ----------------------------------------------------------------------
+
+# Copyright (c) 2015-2019 Andrea Cardaci <cyrus.and@gmail.com>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Imports ----------------------------------------------------------------------
+
 import ast
 import math
 import os
@@ -1113,16 +1137,26 @@ class Source(Dashboard.Module):
         current_line = sal.line
         if current_line == 0:
             return []
-        # reload the source file if changed
-        file_name = sal.symtab.filename
-        ts = None
-        try:
-            ts = os.path.getmtime(file_name)
-        except:
-            pass  # delay error check to open()
+        # try to lookup the source file
+        candidates = [
+            sal.symtab.fullname(),
+            sal.symtab.filename,
+            # XXX GDB also uses absolute filename but it is harder to implement
+            # properly and IMHO useless
+            os.path.basename(sal.symtab.filename)]
+        for candidate in candidates:
+            file_name = candidate
+            ts = None
+            try:
+                ts = os.path.getmtime(file_name)
+                break
+            except:
+                # try another or delay error check to open()
+                continue
         # style changed, different file name or file modified in the meanwhile
         if style_changed or file_name != self.file_name or ts and ts > self.ts:
             try:
+                # reload the source file if changed
                 with open(file_name) as source_file:
                     highlighter = Beautifier(file_name, self.tab_size)
                     self.highlighted = highlighter.active
@@ -2147,27 +2181,8 @@ set python print-stack full
 
 python Dashboard.start()
 
-# ------------------------------------------------------------------------------
-# Copyright (c) 2015-2019 Andrea Cardaci <cyrus.and@gmail.com>
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-# ------------------------------------------------------------------------------
+# File variables ---------------------------------------------------------------
+
 # vim: filetype=python
 # Local Variables:
 # mode: python
