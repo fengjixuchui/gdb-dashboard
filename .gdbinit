@@ -574,22 +574,24 @@ class Dashboard(gdb.Command):
 
     @staticmethod
     def get_term_size(fd=1):  # defaults to the main terminal
-        if sys.platform == 'win32':
-            try:
+        try:
+            if sys.platform == 'win32':
                 import curses
                 # XXX always neglects the fd parameter
                 height, width = curses.initscr().getmaxyx()
                 curses.endwin()
                 return int(width), int(height)
-            except ImportError:
-                return 80, 24  # hardcoded fallback value
-        else:
-            import termios
-            import fcntl
-            # first 2 shorts (4 byte) of struct winsize
-            raw = fcntl.ioctl(fd, termios.TIOCGWINSZ, ' ' * 4)
-            height, width = struct.unpack('hh', raw)
-            return int(width), int(height)
+            else:
+                import termios
+                import fcntl
+                # first 2 shorts (4 byte) of struct winsize
+                raw = fcntl.ioctl(fd, termios.TIOCGWINSZ, ' ' * 4)
+                height, width = struct.unpack('hh', raw)
+                return int(width), int(height)
+        except (ImportError, OSError):
+            # this happens when no curses library is found on windows or when
+            # the terminal is not properly configured
+            return 80, 24  # hardcoded fallback value
 
     @staticmethod
     def set_custom_prompt(dashboard):
@@ -1210,7 +1212,10 @@ class Source(Dashboard.Module):
                 addresses = breakpoint['addresses']
                 is_root_enabled = addresses[0]['enabled']
                 for address in addresses:
-                    if address['file_line'] == number:
+                    # note, despite the lookup path always use the relative
+                    # (sal.symtab.filename) file name to match source files with
+                    # breakpoints
+                    if address['file_line'] == number and address['file_name'] == sal.symtab.filename:
                         enabled = enabled or (address['enabled'] and is_root_enabled)
             if enabled is None:
                 breakpoint = ' '
