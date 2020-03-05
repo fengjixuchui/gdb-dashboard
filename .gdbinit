@@ -6,7 +6,7 @@ python
 
 # License ----------------------------------------------------------------------
 
-# Copyright (c) 2015-2019 Andrea Cardaci <cyrus.and@gmail.com>
+# Copyright (c) 2015-2020 Andrea Cardaci <cyrus.and@gmail.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -288,7 +288,10 @@ def format_value(value, compact=None):
     # (TYPE_CODE_RVALUE_REF is not supported by old GDB)
     if value.type.code in (getattr(gdb, 'TYPE_CODE_REF', None),
                            getattr(gdb, 'TYPE_CODE_RVALUE_REF', None)):
-        value = value.referenced_value()
+        try:
+            value = value.referenced_value()
+        except gdb.error as e:
+            return ansi(e, R.style_error)
     # format the value
     out = to_string(value)
     # dereference up to the actual value if requested
@@ -1337,7 +1340,10 @@ The instructions constituting the current statement are marked, if available.'''
             try:
                 extra_start = 0
                 extra_end = 0
-                asm = self.fetch_asm(frame.pc(), height, True, highlighter)
+                # allow to scroll down nevertheless
+                clamped_offset = min(self.offset, 0)
+                asm = self.fetch_asm(frame.pc(), height - clamped_offset, True, highlighter)
+                asm = asm[-clamped_offset:]
             except gdb.error as e:
                 msg = '{}'.format(e)
                 return [ansi(msg, R.style_error)]
@@ -1653,11 +1659,17 @@ Optionally list the frame arguments and locals too.'''
     def get_pc_line(frame, style):
         frame_pc = ansi(format_address(frame.pc()), style)
         info = 'from {}'.format(frame_pc)
+        # if a frame function symbol is available then use it to fetch the
+        # current function name and address, otherwise fall back relying on the
+        # frame name
         if frame.function():
             name = ansi(frame.function(), style)
             func_start = to_unsigned(frame.function().value())
             offset = ansi(str(frame.pc() - func_start), style)
             info += ' in {}+{}'.format(name, offset)
+        elif frame.name():
+            name = ansi(frame.name(), style)
+            info += ' in {}'.format(name)
         sal = frame.find_sal()
         if sal and sal.symtab:
             file_name = ansi(sal.symtab.filename, style)
@@ -1879,8 +1891,7 @@ class Registers(Dashboard.Module):
         if self.register_list:
             register_list = self.register_list.split()
         else:
-            register_list = list(map(lambda line: line.split(None, 1)[0],
-                                     run('info registers').strip().split('\n')))
+            register_list = Registers.fetch_register_list()
         # fetch registers status
         registers = []
         for name in register_list:
@@ -1960,6 +1971,22 @@ The empty list (default) causes to show all the available registers.''',
             # convert to unsigned but preserve code and flags information
             pass
         return str(value)
+
+    @staticmethod
+    def fetch_register_list(*match_groups):
+        names = []
+        for line in run('maintenance print register-groups').split('\n'):
+            fields = line.split()
+            if len(fields) != 7:
+                continue
+            name, _, _, _, _, _, groups = fields
+            if not re.match('\w', name):
+                continue
+            for group in groups.split(','):
+                if group in (match_groups or ('general',)):
+                    names.append(name)
+                    break
+        return names
 
 class Threads(Dashboard.Module):
     '''List the currently available threads.'''
